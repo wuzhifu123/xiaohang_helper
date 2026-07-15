@@ -56,25 +56,49 @@ for i, q in enumerate(flat):
     with cols[i % 3]:
         st.button(q, key=f"q_{i}", on_click=fill_question, args=(q,))  # 用on_click
 
-if question:
-    data = {
-        "model": "meituan-longcat/LongCat-2.0",#meituan-longcat/LongCat-2.0|Qwen/Qwen2.5-7B-Instruct
-        "messages": [
-            {"role": "system", "content": get_system_prompt(role, load_school_info())},
-            {"role": "user", "content": question},
-        ],
-    }
-    try:
-        response = requests.post(API_URL, headers=HEADERS, json=data, timeout=30)
-        result = response.json()
-        answer = result["choices"][0]["message"]["content"]
-        st.write(answer)
-    except requests.exceptions.Timeout:
-        st.error("AI 响应超时，请稍后再试")
-    except requests.exceptions.ConnectionError:
-        st.error("网络连接失败，请检查网络")
-    except Exception as e:
-        st.error(f"发生错误：{e}")
+# ===== 异常场景5：用户输入空问题（只输入空格不算有效问题）=====
+if question and question.strip():
+    # ===== 异常场景4：数据文件缺失检查 =====
+    md_files = list(Path("data").glob("*.md"))
+    if not md_files:
+        st.warning("⚠️ 数据文件缺失，请联系老师补齐 data/ 目录下的 md 文件")
+    else:
+        data = {
+            # 模型名用课件要求的 Qwen
+            "model": "meituan-longcat/LongCat-2.0",
+            "messages": [
+                {"role": "system", "content": get_system_prompt(role, load_school_info())},
+                {"role": "user", "content": question},
+            ],
+        }
+        try:
+            response = requests.post(API_URL, headers=HEADERS, json=data, timeout=30)
+
+            # ===== 异常场景3：API Key 失效或错误 =====
+            if response.status_code == 401:
+                st.error("🔑 API Key 失效，请重新配置")
+            elif response.status_code != 200:
+                st.error(f"⚠️ API 异常，状态码：{response.status_code}")
+            else:
+                result = response.json()
+                # ===== 异常场景6：API 返回格式异常 =====
+                try:
+                    answer = result["choices"][0]["message"]["content"]
+                    st.write(answer)
+                except (KeyError, IndexError):
+                    st.error("⚠️ AI 返回格式异常，请重试")
+
+        # ===== 异常场景1：API 调用超时 =====
+        except requests.exceptions.Timeout:
+            st.error("⏰ AI 响应超时，请稍后再试")
+        # ===== 异常场景2：网络连接失败 =====
+        except requests.exceptions.ConnectionError:
+            st.error("📡 网络连接失败，请检查网络")
+        except Exception as e:
+            st.error(f"发生错误：{e}")
+elif question is not None and question != "":
+    # 用户输入了纯空格
+    st.info("请输入有效的问题")
 
 st.divider()
 st.header("📞 电话黄页（静态兜底）")
