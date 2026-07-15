@@ -75,3 +75,15 @@ if question:
         st.error("网络连接失败，请检查网络")
     except Exception as e:
         st.error(f"发生错误：{e}")
+
+st.divider()
+st.header("📞 电话黄页（静态兜底）")
+st.caption("AI 答不上来时，可以直接查这里。本页不依赖网络，永远可用。")
+try:
+    yellow_page_content = Path("data/03_电话黄页.md").read_text(encoding="utf-8")
+    st.markdown(yellow_page_content)
+except FileNotFoundError:
+    st.error("电话黄页文件缺失：data/03_电话黄页.md")
+except UnicodeDecodeError:
+    yellow_page_content = Path("data/03_电话黄页.md").read_text(encoding="gbk")
+    st.markdown(yellow_page_content)
