@@ -5,22 +5,36 @@
 .venv/
 .venv3.10/
 myenv/
+venv/
+ENV/
 
 # PyInstaller构建输出
 build/
 dist/
 *.spec
 
+# 大文件
+*.exe
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.bz2
+
 # Python缓存文件
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 
 # IDE配置
 .idea/
 .vscode/
 *.iml
+*.swp
+*.swo
 
 # 日志文件
 *.log
@@ -28,7 +42,43 @@ __pycache__/
 # 临时文件
 *.tmp
 *.bak
+*.backup
+*.old
+*.rej
 
 # 操作系统文件
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# 测试输出
+.pytest_cache/
+.coverage
+htmlcov/
+reports/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 图片（截图目录除外）
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.svg
+!screenshots/
+
+# 构建缓存
+.cache/
+*.toc
+*.pkg
+*.html
+warn-*.txt
+xref-*.html
+
+# 本地配置
+local_config.py
+local_settings.py
