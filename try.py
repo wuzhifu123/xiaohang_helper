@@ -12,9 +12,13 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-# ===== 功能1：初始化问答历史 =====
+# ===== 功能1：初始化问答历史（页面显示用）=====
 if "history" not in st.session_state:
     st.session_state["history"] = []
+
+# ===== 挑战1：初始化多轮对话上下文（发给 API 用）=====
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
 
 if "main_question_box" not in st.session_state:
     st.session_state["main_question_box"] = ""
@@ -22,35 +26,43 @@ if "main_question_box" not in st.session_state:
 def fill_question(q):
     st.session_state["main_question_box"] = q
 
+# ===== 挑战1：切换角色时清空多轮上下文，避免身份混乱 =====
+def reset_dialog():
+    st.session_state["messages"] = []
+
 st.title("小航 · 郑州航院校园信息助手")
 
-# ===== 优化2：角色选择放表单外，切换不会触发搜索 =====
-role = st.selectbox("你是?", ["新生", "在校生", "教师"])
+# ===== 优化2：角色选择放表单外，切换不会触发搜索；切换时清空多轮上下文 =====
+role = st.selectbox("你是?", ["新生", "在校生", "教师"], on_change=reset_dialog)
 
-# ===== 功能5：问题分类标签页 =====
-st.markdown("**试试这些问题：**")
-tab1, tab2, tab3 = st.tabs(["新生指南", "办事流程", "应急防骗"])
+# ===== 推荐：按角色显示4个专属问题（参考 app.py 的 RECOMMEND_QUESTIONS）=====
+RECOMMEND_QUESTIONS = {
+    "新生": [
+        "报到注册流程是怎样的？",
+        "宿舍是怎么分配的？",
+        "校园一卡通在哪里办理？",
+        "新生军训安排是什么？"
+    ],
+    "在校生": [
+        "如何办理请假手续？",
+        "图书馆借书流程是怎样的？",
+        "成绩查询在哪里可以查到？",
+        "如何申请助学金？"
+    ],
+    "教师": [
+        "如何申请科研经费？",
+        "教职工宿舍申请流程？",
+        "如何在教务系统录入成绩？",
+        "会议室怎么预约？"
+    ]
+}
 
-with tab1:
-    new_qs = ["新生报到需要带哪些材料？", "宿舍是几人间？能选吗？", "一卡通怎么办理和充值？"]
-    cols = st.columns(3)
-    for i, q in enumerate(new_qs):
-        with cols[i]:
-            st.button(q, key=f"new_{i}", on_click=fill_question, args=(q,))
-
-with tab2:
-    flow_qs = ["怎么办理走读申请？", "补办学生证去哪里？", "奖学金评定流程是什么？"]
-    cols = st.columns(3)
-    for i, q in enumerate(flow_qs):
-        with cols[i]:
-            st.button(q, key=f"flow_{i}", on_click=fill_question, args=(q,))
-
-with tab3:
-    emer_qs = ["保卫处电话是多少？", "心理咨询中心怎么联系？", "遇到诈骗怎么办？"]
-    cols = st.columns(3)
-    for i, q in enumerate(emer_qs):
-        with cols[i]:
-            st.button(q, key=f"emer_{i}", on_click=fill_question, args=(q,))
+st.markdown(f"**{role}可能想问：**")
+rec_qs = RECOMMEND_QUESTIONS[role]
+cols = st.columns(2)
+for i, q in enumerate(rec_qs):
+    with cols[i % 2]:
+        st.button(q, key=f"rec_{i}", on_click=fill_question, args=(q,))
 
 # ===== 优化2：用表单包裹输入框+发送按钮，切换角色不会自动重搜 =====
 with st.form("ask_form", clear_on_submit=False):
@@ -70,13 +82,14 @@ with st.form("ask_form", clear_on_submit=False):
             if not md_files:
                 st.warning("⚠️ 数据文件缺失，请联系老师补齐 data/ 目录下的 md 文件")
             else:
+                # ===== 挑战1：构造多轮对话 messages（system + 历史上下文 + 当前问题）=====
+                system_prompt = get_system_prompt(role, load_school_info())
+                messages = [{"role": "system", "content": system_prompt}] + st.session_state["messages"]
+                messages.append({"role": "user", "content": question})
+
                 data = {
-                    # 模型名用课件要求的 Qwen
                     "model": "meituan-longcat/LongCat-2.0",
-                    "messages": [
-                        {"role": "system", "content": get_system_prompt(role, load_school_info())},
-                        {"role": "user", "content": question},
-                    ],
+                    "messages": messages,
                 }
                 try:
                     # ===== 功能3：加载状态提示 =====
@@ -100,13 +113,16 @@ with st.form("ask_form", clear_on_submit=False):
                             st.markdown(answer)
                             # ===== 功能6：回答元信息 =====
                             st.caption(f"回答字数：{len(answer)} 字 · 耗时：{end - start:.1f} 秒")
-                            # ===== 功能1：保存到历史 =====
+                            # ===== 功能1：保存到页面历史 =====
                             st.session_state["history"].append({
                                 "time": time.strftime("%H:%M:%S"),
                                 "role": role,
                                 "question": question,
                                 "answer": answer,
                             })
+                            # ===== 挑战1：保存到多轮上下文（下次提问会带上）=====
+                            st.session_state["messages"].append({"role": "user", "content": question})
+                            st.session_state["messages"].append({"role": "assistant", "content": answer})
                         except (KeyError, IndexError):
                             st.error("⚠️ AI 返回格式异常，请重试")
 
@@ -119,13 +135,32 @@ with st.form("ask_form", clear_on_submit=False):
                 except Exception as e:
                     st.error(f"发生错误：{e}")
 
-# ===== 功能1+功能2：问答历史 + 清空按钮 =====
+# ===== 挑战1：新对话按钮（清空多轮上下文，AI 忘记之前对话；页面历史保留）=====
+if st.button("🔄 新对话", help="清空多轮对话上下文，AI 将忘记之前的对话"):
+    st.session_state["messages"] = []
+    st.rerun()
+
+# ===== 功能1+2 + 挑战2：问答历史区 + 导出按钮 + 清空按钮 =====
 st.divider()
-col1, col2 = st.columns([4, 1])
+col1, col2, col3 = st.columns([3, 1, 1])
 with col1:
     st.header("📝 问答历史")
 with col2:
-    if st.button("🗑️ 清空历史"):
+    # ===== 挑战2：导出对话记录为 txt 文件 =====
+    if st.session_state["history"]:
+        text = ""
+        for item in st.session_state["history"]:
+            text += f"[{item['time']}] {item['role']} 提问：{item['question']}\n"
+            text += f"回答：{item['answer']}\n"
+            text += "---\n"
+        st.download_button(
+            label="📥 导出",
+            data=text,
+            file_name=f"小航对话记录_{time.strftime('%Y%m%d')}.txt",
+            mime="text/plain",
+        )
+with col3:
+    if st.button("🗑️ 清空"):
         st.session_state["history"] = []
         st.rerun()
 
