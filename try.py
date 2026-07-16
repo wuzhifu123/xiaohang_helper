@@ -23,8 +23,9 @@ def fill_question(q):
     st.session_state["main_question_box"] = q
 
 st.title("小航 · 郑州航院校园信息助手")
+
+# ===== 优化2：角色选择放表单外，切换不会触发搜索 =====
 role = st.selectbox("你是?", ["新生", "在校生", "教师"])
-question = st.text_input("有啥想问的?", key="main_question_box")
 
 # ===== 功能5：问题分类标签页 =====
 st.markdown("**试试这些问题：**")
@@ -51,68 +52,72 @@ with tab3:
         with cols[i]:
             st.button(q, key=f"emer_{i}", on_click=fill_question, args=(q,))
 
-# ===== 异常场景5：空输入 + 小任务1 序号3：长度边界 =====
-if question and question.strip():
-    # ===== 小任务1：长问题边界处理 =====
-    if len(question) > 500:
-        st.warning("⚠️ 问题有点长（超过500字），AI 可能处理不了，建议拆短一些再问")
-    else:
-        # ===== 异常场景4：数据文件缺失检查 =====
-        md_files = list(Path("data").glob("*.md"))
-        if not md_files:
-            st.warning("⚠️ 数据文件缺失，请联系老师补齐 data/ 目录下的 md 文件")
+# ===== 优化2：用表单包裹输入框+发送按钮，切换角色不会自动重搜 =====
+with st.form("ask_form", clear_on_submit=False):
+    question = st.text_input("有啥想问的?", key="main_question_box")
+    submitted = st.form_submit_button("发送提问", type="primary")
+
+    if submitted:
+        # ===== 异常场景5：空输入校验 =====
+        if not question or not question.strip():
+            st.info("请输入有效的问题")
+        # ===== 小任务1：长问题边界处理 =====
+        elif len(question) > 500:
+            st.warning("⚠️ 问题有点长（超过500字），AI 可能处理不了，建议拆短一些再问")
         else:
-            data = {
-                # 模型名用课件要求的 Qwen
-                "model": "meituan-longcat/LongCat-2.0",
-                "messages": [
-                    {"role": "system", "content": get_system_prompt(role, load_school_info())},
-                    {"role": "user", "content": question},
-                ],
-            }
-            try:
-                # ===== 功能3：加载状态提示 =====
-                # ===== 功能6：耗时统计起点 =====
-                start = time.time()
-                with st.spinner("小航正在思考..."):
-                    response = requests.post(API_URL, headers=HEADERS, json=data, timeout=30)
+            # ===== 异常场景4：数据文件缺失检查 =====
+            md_files = list(Path("data").glob("*.md"))
+            if not md_files:
+                st.warning("⚠️ 数据文件缺失，请联系老师补齐 data/ 目录下的 md 文件")
+            else:
+                data = {
+                    # 模型名用课件要求的 Qwen
+                    "model": "meituan-longcat/LongCat-2.0",
+                    "messages": [
+                        {"role": "system", "content": get_system_prompt(role, load_school_info())},
+                        {"role": "user", "content": question},
+                    ],
+                }
+                try:
+                    # ===== 功能3：加载状态提示 =====
+                    # ===== 功能6：耗时统计起点 =====
+                    start = time.time()
+                    with st.spinner("小航正在思考..."):
+                        response = requests.post(API_URL, headers=HEADERS, json=data, timeout=30)
 
-                # ===== 异常场景3：API Key 失效或错误 =====
-                if response.status_code == 401:
-                    st.error("🔑 API Key 失效，请重新配置")
-                elif response.status_code != 200:
-                    st.error(f"⚠️ API 异常，状态码：{response.status_code}")
-                else:
-                    result = response.json()
-                    # ===== 异常场景6：API 返回格式异常 =====
-                    try:
-                        answer = result["choices"][0]["message"]["content"]
-                        end = time.time()
-                        # ===== 交互优化：Markdown 格式化 =====
-                        st.markdown(answer)
-                        # ===== 功能6：回答元信息 =====
-                        st.caption(f"回答字数：{len(answer)} 字 · 耗时：{end - start:.1f} 秒")
-                        # ===== 功能1：保存到历史 =====
-                        st.session_state["history"].append({
-                            "time": time.strftime("%H:%M:%S"),
-                            "role": role,
-                            "question": question,
-                            "answer": answer,
-                        })
-                    except (KeyError, IndexError):
-                        st.error("⚠️ AI 返回格式异常，请重试")
+                    # ===== 异常场景3：API Key 失效或错误 =====
+                    if response.status_code == 401:
+                        st.error("🔑 API Key 失效，请重新配置")
+                    elif response.status_code != 200:
+                        st.error(f"⚠️ API 异常，状态码：{response.status_code}")
+                    else:
+                        result = response.json()
+                        # ===== 异常场景6：API 返回格式异常 =====
+                        try:
+                            answer = result["choices"][0]["message"]["content"]
+                            end = time.time()
+                            # ===== 交互优化：Markdown 格式化 =====
+                            st.markdown(answer)
+                            # ===== 功能6：回答元信息 =====
+                            st.caption(f"回答字数：{len(answer)} 字 · 耗时：{end - start:.1f} 秒")
+                            # ===== 功能1：保存到历史 =====
+                            st.session_state["history"].append({
+                                "time": time.strftime("%H:%M:%S"),
+                                "role": role,
+                                "question": question,
+                                "answer": answer,
+                            })
+                        except (KeyError, IndexError):
+                            st.error("⚠️ AI 返回格式异常，请重试")
 
-            # ===== 异常场景1：API 调用超时 =====
-            except requests.exceptions.Timeout:
-                st.error("⏰ AI 响应超时，请稍后再试")
-            # ===== 异常场景2：网络连接失败 =====
-            except requests.exceptions.ConnectionError:
-                st.error("📡 网络连接失败，请检查网络")
-            except Exception as e:
-                st.error(f"发生错误：{e}")
-elif question is not None and question != "":
-    # 用户输入了纯空格
-    st.info("请输入有效的问题")
+                # ===== 异常场景1：API 调用超时 =====
+                except requests.exceptions.Timeout:
+                    st.error("⏰ AI 响应超时，请稍后再试")
+                # ===== 异常场景2：网络连接失败 =====
+                except requests.exceptions.ConnectionError:
+                    st.error("📡 网络连接失败，请检查网络")
+                except Exception as e:
+                    st.error(f"发生错误：{e}")
 
 # ===== 功能1+功能2：问答历史 + 清空按钮 =====
 st.divider()
@@ -124,11 +129,12 @@ with col2:
         st.session_state["history"] = []
         st.rerun()
 
+# ===== 优化1：历史记录改为可折叠展开（expander），标题显示问题，点击展开看回答 =====
 if st.session_state["history"]:
     for item in reversed(st.session_state["history"]):
-        st.write(f"[{item['time']}] {item['role']} 提问：{item['question']}")
-        st.write(f"回答：{item['answer']}")
-        st.caption("---")
+        with st.expander(f"[{item['time']}] {item['role']} · {item['question']}"):
+            st.markdown(item["answer"])
+            st.caption("---")
 else:
     st.caption("暂无历史记录，问一个问题试试吧～")
 
