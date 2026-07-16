@@ -23,12 +23,29 @@ if "messages" not in st.session_state:
 if "main_question_box" not in st.session_state:
     st.session_state["main_question_box"] = ""
 
+# ===== 新对话视觉反馈：记录新对话开始时间戳 =====
+if "new_dialog_time" not in st.session_state:
+    st.session_state["new_dialog_time"] = 0
+
+# ===== 新对话临时提示标记 =====
+if "show_new_dialog_toast" not in st.session_state:
+    st.session_state["show_new_dialog_toast"] = False
+
 def fill_question(q):
     st.session_state["main_question_box"] = q
 
 # ===== 挑战1：切换角色时清空多轮上下文，避免身份混乱 =====
 def reset_dialog():
     st.session_state["messages"] = []
+    st.session_state["new_dialog_time"] = time.time()
+
+# ===== 旧历史灰色样式 =====
+st.markdown("""
+<style>
+.archive-expander { color: #999; }
+.archive-expander summary { opacity: 0.7; }
+</style>
+""", unsafe_allow_html=True)
 
 st.title("小航 · 郑州航院校园信息助手")
 
@@ -63,6 +80,23 @@ cols = st.columns(2)
 for i, q in enumerate(rec_qs):
     with cols[i % 2]:
         st.button(q, key=f"rec_{i}", on_click=fill_question, args=(q,))
+
+# ===== 新对话临时提示：在 rerun 后显示 toast =====
+if st.session_state["show_new_dialog_toast"]:
+    st.toast("✅ 新对话已开始！AI 将重新开始回答", icon="🎉")
+    st.session_state["show_new_dialog_toast"] = False
+
+# ===== 状态指示器：显示当前对话状态 =====
+if st.session_state["new_dialog_time"] > 0:
+    st.info("🔄 当前：新对话 · AI 已忘记之前对话")
+
+# ===== 挑战1：新对话按钮（移到表单前面，避免修改已实例化的 session_state）=====
+if st.button("🔄 新对话", help="清空多轮对话上下文，AI 将忘记之前的对话"):
+    st.session_state["messages"] = []
+    st.session_state["new_dialog_time"] = time.time()
+    st.session_state["main_question_box"] = ""
+    st.session_state["show_new_dialog_toast"] = True
+    st.rerun()
 
 # ===== 优化2：用表单包裹输入框+发送按钮，切换角色不会自动重搜 =====
 with st.form("ask_form", clear_on_submit=False):
@@ -114,8 +148,10 @@ with st.form("ask_form", clear_on_submit=False):
                             # ===== 功能6：回答元信息 =====
                             st.caption(f"回答字数：{len(answer)} 字 · 耗时：{end - start:.1f} 秒")
                             # ===== 功能1：保存到页面历史 =====
+                            current_time = time.time()
                             st.session_state["history"].append({
                                 "time": time.strftime("%H:%M:%S"),
+                                "timestamp": current_time,
                                 "role": role,
                                 "question": question,
                                 "answer": answer,
@@ -134,11 +170,6 @@ with st.form("ask_form", clear_on_submit=False):
                     st.error("📡 网络连接失败，请检查网络")
                 except Exception as e:
                     st.error(f"发生错误：{e}")
-
-# ===== 挑战1：新对话按钮（清空多轮上下文，AI 忘记之前对话；页面历史保留）=====
-if st.button("🔄 新对话", help="清空多轮对话上下文，AI 将忘记之前的对话"):
-    st.session_state["messages"] = []
-    st.rerun()
 
 # ===== 功能1+2 + 挑战2：问答历史区 + 导出按钮 + 清空按钮 =====
 st.divider()
@@ -165,8 +196,26 @@ with col3:
         st.rerun()
 
 # ===== 优化1：历史记录改为可折叠展开（expander），标题显示问题，点击展开看回答 =====
+# ===== 新对话视觉反馈：旧历史变暗 =====
 if st.session_state["history"]:
+    old_history = []
+    new_history = []
     for item in reversed(st.session_state["history"]):
+        if st.session_state["new_dialog_time"] > 0 and item.get("timestamp", 0) < st.session_state["new_dialog_time"]:
+            old_history.append(item)
+        else:
+            new_history.append(item)
+
+    if old_history:
+        st.markdown("📋 **之前的对话（已归档）**", help="这些对话的上下文已被 AI 遗忘")
+        for item in old_history:
+            st.markdown(f"**<span style='color:#999'>[{item['time']}] {item['role']} · {item['question']}</span>**", unsafe_allow_html=True)
+            with st.expander("查看回答"):
+                st.markdown(item["answer"])
+            st.caption("---")
+        st.divider()
+
+    for item in new_history:
         with st.expander(f"[{item['time']}] {item['role']} · {item['question']}"):
             st.markdown(item["answer"])
             st.caption("---")
