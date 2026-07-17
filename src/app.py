@@ -1,6 +1,14 @@
 import time
+import sys
+import os
 import streamlit as st
 from pathlib import Path
+
+if getattr(sys, 'frozen', False):
+    sys.path.insert(0, os.path.join(sys._MEIPASS, 'src'))
+else:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from prompts import load_school_info, get_system_prompt
 from config import API_KEY
 from api import call_api

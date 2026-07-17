@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 ROLE_PROMPTS = {
@@ -18,15 +19,25 @@ ALIAS_DICT = """
 """
 
 
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
+
+
 def load_school_info():
-    """读取 data/ 目录下所有 md 文件，拼成大文本"""
+    base_path = get_base_path()
+    data_dir = base_path / "data"
+    files = sorted(data_dir.glob("*.md"))
+    if not files:
+        return ""
     return "\n\n".join(
         f"=== {f.name} ===\n{f.read_text(encoding='utf-8')}"
-        for f in sorted(Path("data").glob("*.md"))
+        for f in files
     )
 
+
 def get_system_prompt(role, info):
-    """组装完整 system prompt：身份 + 别名 + 硬规则 + 学校资料"""
     return f"""你是郑州航院校园信息助手「小航」。
 {ROLE_PROMPTS[role]}
 {ALIAS_DICT}
@@ -42,4 +53,3 @@ def get_system_prompt(role, info):
 【学校资料】
 {info}
 """
-
